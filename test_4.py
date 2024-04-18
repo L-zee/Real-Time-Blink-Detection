@@ -160,17 +160,9 @@ while cap.isOpened():
         
         # 检测是否超过10秒未眨眼，眨眼频率检测
         if time.time() - last_fatigue_check_time > 10:
-            if len(blink_history) > 0:
-                # 计算最早的眨眼时刻与当前时间的差值
-                if time.time() - blink_history[0] > 10:
-                    # 如果超过10秒没有眨眼,显示疲劳提示信息
-                    if time.time() - last_face_time > 10:
-                       fatigue_warning_end_time = time.time() + 2  # 设置提示信息结束时间为2秒后
-            else:
-                # 如果过去10秒内没有眨眼记录,显示疲劳提示信息    
-                if time.time() - last_face_time > 10:
-                    fatigue_warning_end_time = time.time() + 2
-            
+            # 如果过去10秒内没有眨眼记录或者最近一次眨眼时刻与当前时间差超过10秒,且最后一次检测到人脸的时间与当前时间差超过10秒
+            if (len(blink_history) == 0 or time.time() - blink_history[-1] > 10) and time.time() - last_face_time > 10:
+                fatigue_warning_end_time = time.time() + 2  # 设置提示信息结束时间为2秒后
             # 更新上一次检查时间 
             last_fatigue_check_time = time.time()
             
