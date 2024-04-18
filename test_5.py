@@ -38,13 +38,35 @@ def crop_eye(img, eye_points):
     return eye_img, eye_rect
 
 # 对裁剪出的眼睛图像进行预处理
-def preprocess_eye(eye_img):
+def preprocess_eye(eye_img, is_right_eye=False):
     # 使用自适应直方图均衡化提高图像对比度
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(2,2))
     eye_img = clahe.apply(eye_img)
     # 缩放图像到指定尺寸
     eye_img = cv2.resize(eye_img, dsize=EYE_IMG_SIZE)
+    # 如果是右眼图像,需要水平翻转
+    if is_right_eye:
+        eye_img = cv2.flip(eye_img, flipCode=1)
     return eye_img
+
+# 检测眨眼并更新相关状态变量
+def detect_blink(le_img, ri_img):
+    global total_blinks, eyes_closed, blink_start_time, blink_history
+    # 将眼睛图像转换为模型输入格式,使用模型预测左眼和右眼的睁闭状态
+    le_pred = blink_model.predict(le_img.reshape((1, EYE_IMG_SIZE[1], EYE_IMG_SIZE[0], 1)))[0, 0]
+    ri_pred = blink_model.predict(ri_img.reshape((1, EYE_IMG_SIZE[1], EYE_IMG_SIZE[0], 1)))[0, 0]
+    # 根据预测结果判断眼睛状态
+    le_status = 'O' if le_pred > 0.1 else '-'
+    ri_status = 'O' if ri_pred > 0.1 else '-'
+    if le_status == '-' or ri_status == '-':
+        if not eyes_closed:
+            eyes_closed = True
+            blink_start_time = time.time()  # 记录闭眼开始时间
+            total_blinks += 1
+            blink_history.append(time.time())  # 将眨眼时刻添加到眨眼历史记录中
+    else:
+        eyes_closed = False
+    return le_pred, le_status, ri_pred, ri_status
 
 # 在图像上绘制眼睛状态和概率信息
 def draw_eye_status(result_frame, le_rect, re_rect, le_status, re_status, le_pred, re_pred):
@@ -68,28 +90,6 @@ def draw_eye_status(result_frame, le_rect, re_rect, le_status, re_status, le_pre
     cv2.putText(result_frame, f'{le_pred:.2f}', le_prob_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
     cv2.putText(result_frame, f'{re_pred:.2f}', re_prob_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 2)
     cv2.putText(result_frame, f'{re_pred:.2f}', re_prob_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
-
-# 检测眨眼并更新相关状态变量
-def detect_blink(le_status, re_status):
-    global total_blinks, eyes_closed, blink_start_time, blink_history
-    if le_status == '-' or re_status == '-':
-        if not eyes_closed:
-            eyes_closed = True
-            blink_start_time = time.time()  # 记录闭眼开始时间
-            total_blinks += 1
-            blink_history.append(time.time())  # 将眨眼时刻添加到眨眼历史记录中
-    else:
-        eyes_closed = False
-
-# 在图像上绘制总眨眼次数
-def draw_total_blinks(result_frame):
-    total_blinks_pos = (2, 20)
-    if eyes_closed:
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1)
-    else:
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
 
 # 检测长时间闭眼(睡意检测)
 def check_sleepy(le_status, re_status):
@@ -137,6 +137,16 @@ def draw_freq_warning(result_frame):
         cv2.putText(result_frame, freq_warning_text_1, freq_warning_pos_1, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
         cv2.putText(result_frame, freq_warning_text_2, freq_warning_pos_2, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
+# 在图像上绘制总眨眼次数
+def draw_total_blinks(result_frame):
+    total_blinks_pos = (2, 20)
+    if eyes_closed:
+        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1)
+    else:
+        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
+
 # 计算并绘制实时帧率
 def calc_and_draw_fps(result_frame):
     global frame_count, elapsed_time, fps, start_time
@@ -145,7 +155,7 @@ def calc_and_draw_fps(result_frame):
     elapsed_time = time.time() - start_time  # 计算当前帧与第一帧的时间差
     
     if elapsed_time > 0.5:
-        fps = frame_count // elapsed_time  # 计算实时帧率
+        fps = frame_count / elapsed_time  # 计算实时帧率
         frame_count = 0  # 重置帧数计数器
         start_time = time.time()  # 重置起始时间
     
@@ -179,11 +189,11 @@ while cap.isOpened():
     if not ret:
         break  # 如果读取失败,跳出循环
 
-    # 预处理:缩放,翻转,备份原图
-    frame = cv2.resize(frame, dsize=(0, 0), fx=0.5, fy=0.5)
-    frame = cv2.flip(frame, 1)
-    result_frame = frame.copy()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # 转换为灰度图
+    # 预处理
+    frame = cv2.resize(frame, dsize=(0, 0), fx=0.5, fy=0.5) # 缩小图像尺寸,加快处理速度
+    frame = cv2.flip(frame, 1)  # 水平翻转图像
+    result_frame = frame.copy() # 复制原始图像,用于绘制结果
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # 将图像转换为灰度图
 
     # 人脸检测
     faces = face_detector(gray)
@@ -206,35 +216,24 @@ while cap.isOpened():
         
         # 对裁剪出的眼睛图像进行预处理
         le_img = preprocess_eye(le_img)
-        ri_img = preprocess_eye(ri_img)
-        
-        # 水平翻转右眼图像
-        ri_img = cv2.flip(ri_img, flipCode=1)
-        
-        # 将眼睛图像转换为模型输入格式,使用模型预测左眼和右眼的睁闭状态
-        le_pred = blink_model.predict(le_img.reshape((1, EYE_IMG_SIZE[1], EYE_IMG_SIZE[0], 1)))
-        ri_pred = blink_model.predict(ri_img.reshape((1, EYE_IMG_SIZE[1], EYE_IMG_SIZE[0], 1)))
-        
-        # 根据预测结果判断眼睛状态
-        le_status = 'O' if le_pred > 0.1 else '-'
-        ri_status = 'O' if ri_pred > 0.1 else '-'
-        
-        # 在图像上绘制眼睛状态和睁闭概率
-        draw_eye_status(result_frame, le_rect, ri_rect, le_status, ri_status, le_pred[0][0], ri_pred[0][0])
-        
+        ri_img = preprocess_eye(ri_img, is_right_eye=True)
+
         # 检测眨眼并更新相关状态
-        detect_blink(le_status, ri_status)
+        le_pred, le_status, ri_pred, ri_status = detect_blink(le_img, ri_img)
+
+        # 在图像上绘制眼睛状态和睁闭概率
+        draw_eye_status(result_frame, le_rect, ri_rect, le_status, ri_status, le_pred, ri_pred)
         
         # 检测长时间闭眼和低眨眼频率
         check_sleepy(le_status, ri_status)
         check_blink_freq()
 
-    # 在图像上绘制总眨眼次数
-    draw_total_blinks(result_frame)
-
     # 在图像上绘制睡意和疲劳警告信息
     draw_sleepy_warning(result_frame)
     draw_freq_warning(result_frame)
+
+    # 在图像上绘制总眨眼次数
+    draw_total_blinks(result_frame)
 
     # 计算并绘制实时帧率
     calc_and_draw_fps(result_frame)
