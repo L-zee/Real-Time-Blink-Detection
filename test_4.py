@@ -49,8 +49,8 @@ eyes_closed = False
 start_time = time.time()
 frame_count = 0
 fps = 0
-last_fatigue_check_time = time.time()  
-fatigue_warning_end_time = 0
+last_freq_check_time = time.time()  
+freq_warning_end_time = 0
 sleepy_warning_end_time = 0
 blink_history = []
 
@@ -158,17 +158,6 @@ while cap.isOpened():
             cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
             cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
         
-        # 检测是否超过10秒未眨眼，眨眼频率检测
-        if time.time() - last_fatigue_check_time > 10:
-            # 如果过去10秒内没有眨眼记录或者最近一次眨眼时刻与当前时间差超过10秒,且最后一次检测到人脸的时间与当前时间差超过10秒
-            if (len(blink_history) == 0 or time.time() - blink_history[-1] > 10) and time.time() - last_face_time > 10:
-                fatigue_warning_end_time = time.time() + 2  # 设置提示信息结束时间为2秒后
-            # 更新上一次检查时间 
-            last_fatigue_check_time = time.time()
-            
-            # 移除10秒之前的眨眼记录
-            while len(blink_history) > 0 and time.time() - blink_history[0] > 10:
-                blink_history.pop(0)
 
         # 检测闭眼时间是否超过2秒，睡意检测
         if le_status == '-' and re_status == '-' and time.time() - blink_start_time > 2 and time.time() - last_face_time > 2:
@@ -179,6 +168,17 @@ while cap.isOpened():
             # 设置警告信息的结束时间为当前时间加上2秒
             sleepy_warning_end_time = time.time() + 2
     
+        # 检测是否超过10秒未眨眼，眨眼频率检测
+        if time.time() - last_freq_check_time > 10:
+            # 如果过去10秒内没有眨眼记录或者最近一次眨眼时刻与当前时间差超过10秒,且最后一次检测到人脸的时间与当前时间差超过10秒
+            if (len(blink_history) == 0 or time.time() - blink_history[-1] > 10) and time.time() - last_face_time > 10:
+                freq_warning_end_time = time.time() + 2  # 设置提示信息结束时间为2秒后
+            # 更新上一次检查时间 
+            last_freq_check_time = time.time()
+            
+            # 移除10秒之前的眨眼记录
+            while len(blink_history) > 0 and time.time() - blink_history[0] > 10:
+                blink_history.pop(0)
 
     # 帧数计数器加1
     frame_count += 1
@@ -193,31 +193,30 @@ while cap.isOpened():
         start_time = time.time()
     
     # 在画面右上角显示检测频率
-    fps_text = f"FPS: {fps:.2f}"
-    cv2.putText(result_frame, fps_text, (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-    cv2.putText(result_frame, fps_text, (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
-    
-    # 如果当前时间在疲劳提示信息显示的时间范围内,显示提示信息
-    if time.time() < fatigue_warning_end_time:  
-        fatigue_warning_text_1 = "Blinking Frequency"
-        fatigue_warning_text_2 = 'Too Low'
-        (text1_width, text1_height), _ = cv2.getTextSize(fatigue_warning_text_1, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-        fatigue_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height)
-        (text2_width, text2_height), _ = cv2.getTextSize(fatigue_warning_text_2, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-        fatigue_warning_pos_2 = (result_frame.shape[1] // 2 - text2_width // 2, result_frame.shape[0] // 2 + text2_height)
-        cv2.putText(result_frame, fatigue_warning_text_1, fatigue_warning_pos_1, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-        cv2.putText(result_frame, fatigue_warning_text_2, fatigue_warning_pos_2, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+    cv2.putText(result_frame, f"FPS: {fps:.2f}", (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+    cv2.putText(result_frame, f"FPS: {fps:.2f}", (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
 
     # 如果当前时间在睡意警告信息显示的时间范围内,显示警告信息
     if time.time() < sleepy_warning_end_time:
         sleepy_warning_text_1 = "Feeling sleepy?"
         sleepy_warning_text_2 = 'Wake up!'
         (text1_width, text1_height), _ = cv2.getTextSize(sleepy_warning_text_1, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-        sleepy_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height)
+        sleepy_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height - 30)
         (text2_width, text2_height), _ = cv2.getTextSize(sleepy_warning_text_2, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-        sleepy_warning_pos_2 = (result_frame.shape[1] // 2 - text2_width // 2, result_frame.shape[0] // 2 + text2_height)
+        sleepy_warning_pos_2 = (result_frame.shape[1] // 2 - text2_width // 2, result_frame.shape[0] // 2 + text2_height - 40)
         cv2.putText(result_frame, sleepy_warning_text_1, sleepy_warning_pos_1, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
         cv2.putText(result_frame, sleepy_warning_text_2, sleepy_warning_pos_2, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+    
+    # 如果当前时间在疲劳提示信息显示的时间范围内,显示提示信息
+    if time.time() < freq_warning_end_time:  
+        freq_warning_text_1 = "Blinking Frequency"
+        freq_warning_text_2 = 'Too Low'
+        (text1_width, text1_height), _ = cv2.getTextSize(freq_warning_text_1, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+        freq_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height + 50)
+        (text2_width, text2_height), _ = cv2.getTextSize(freq_warning_text_2, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+        freq_warning_pos_2 = (result_frame.shape[1] // 2 - text2_width // 2, result_frame.shape[0] // 2 + text2_height + 40)
+        cv2.putText(result_frame, freq_warning_text_1, freq_warning_pos_1, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+        cv2.putText(result_frame, freq_warning_text_2, freq_warning_pos_2, cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
     # 显示处理后的图像
     cv2.imshow('result', result_frame)
