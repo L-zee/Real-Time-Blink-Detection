@@ -170,7 +170,7 @@ cv2.resizeWindow('result', 1000, 750)
 # 打开默认的摄像头
 cap = cv2.VideoCapture(0)
 
-# 初始化疲劳检测相关的状态变量
+# 初始化疲劳检测、帧率相关的状态变量
 total_blinks = 0
 eyes_closed = False  
 start_time = time.time()
