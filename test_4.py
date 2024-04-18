@@ -158,7 +158,7 @@ while cap.isOpened():
             cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
             cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
         
-        # 检查是否需要进行眨眼频率疲劳检测
+        # 检测是否超过10秒未眨眼，眨眼频率检测
         if time.time() - last_fatigue_check_time > 10:
             if len(blink_history) > 0:
                 # 计算最早的眨眼时刻与当前时间的差值
@@ -178,16 +178,15 @@ while cap.isOpened():
             while len(blink_history) > 0 and time.time() - blink_history[0] > 10:
                 blink_history.pop(0)
 
-        # 检测闭眼时间是否超过2秒,睡意检测
-        if le_status == '-' and re_status == '-' and time.time() - blink_start_time > 2:
-            if time.time() - last_face_time > 2:
-                # 播放警告音
-                winsound.PlaySound("alert.wav", winsound.SND_ASYNC)
-                # 更新眨眼开始时间
-                blink_start_time = time.time()
-                # 设置警告信息的结束时间为当前时间加上2秒
-                sleepy_warning_end_time = time.time() + 2
-        
+        # 检测闭眼时间是否超过2秒，睡意检测
+        if le_status == '-' and re_status == '-' and time.time() - blink_start_time > 2 and time.time() - last_face_time > 2:
+            # 播放警告音
+            winsound.PlaySound("alert.wav", winsound.SND_ASYNC)
+            # 更新眨眼开始时间
+            blink_start_time = time.time()
+            # 设置警告信息的结束时间为当前时间加上2秒
+            sleepy_warning_end_time = time.time() + 2
+    
 
     # 帧数计数器加1
     frame_count += 1

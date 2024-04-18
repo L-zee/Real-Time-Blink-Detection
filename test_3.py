@@ -151,7 +151,7 @@ while cap.isOpened():
         if time.time() - last_fatigue_check_time > 10:
             if len(blink_history) > 0:
                 # 计算最早的眨眼时刻与当前时间的差值
-                if time.time() - blink_history[0] > 10:
+                if time.time() - blink_history[-1] > 10:
                     # 如果超过10秒没有眨眼,显示疲劳提示信息
                     fatigue_warning_end_time = time.time() + 2  # 设置提示信息结束时间为2秒后
             else:
