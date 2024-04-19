@@ -16,6 +16,8 @@ blink_model.summary()
 # 初始化人脸检测器和面部特征点检测器
 face_detector = dlib.get_frontal_face_detector()
 landmark_predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+face_tracker = dlib.correlation_tracker()
+
 
 # 从原始图像中裁剪出眼睛区域
 def crop_eye(img, eye_points):
@@ -182,6 +184,8 @@ sleepy_warning_end_time = 0
 blink_history = []
 face_detected = False
 last_face_time = 0
+tracking_face = False  # 添加人脸跟踪状态标志
+
 
 # 视频处理循环
 while cap.isOpened():
@@ -195,20 +199,41 @@ while cap.isOpened():
     result_frame = frame.copy() # 复制原始图像,用于绘制结果
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # 将图像转换为灰度图
 
-    # 人脸检测
-    faces = face_detector(gray)
-    if len(faces) > 0:
-        if not face_detected:
-            face_detected = True
-            last_face_time = time.time()  # 记录最后一次检测到人脸的时间
-    else:
-        face_detected = False
+    if not tracking_face:
+        # 如果没有跟踪人脸,则进行人脸检测
+        faces = face_detector(gray)
+        if len(faces) > 0:
+            if not face_detected:
+                face_detected = True
+                last_face_time = time.time()  # 记录最后一次检测到人脸的时间
+            
+            # 选择检测到的第一张人脸进行跟踪
+            face = faces[0]
+            face_tracker.start_track(frame, dlib.rectangle(face.left(), face.top(), face.right(), face.bottom()))
+            tracking_face = True
+        else:
+            face_detected = False
+    else:        
+        # 如果正在跟踪人脸,则更新跟踪器
+        tracking_quality = face_tracker.update(frame)
         
-    # 对检测到的每一张人脸进行处理
-    for face in faces:
-        # 检测面部特征点
+        if tracking_quality >= 5:
+            # 如果跟踪质量足够高,则继续跟踪
+            tracked_position = face_tracker.get_position()
+            t_left = int(tracked_position.left())
+            t_top = int(tracked_position.top())
+            t_right = int(tracked_position.right())
+            t_bottom = int(tracked_position.bottom())
+            face = dlib.rectangle(t_left, t_top, t_right, t_bottom)
+        else:
+            # 如果跟踪质量太低,则停止跟踪,下一帧重新检测人脸
+            tracking_face = False
+            continue
+    
+        # 对跟踪到的人脸进行处理
         landmarks = landmark_predictor(gray, face)
         landmarks = face_utils.shape_to_np(landmarks)
+        # 对检测到的每一张人脸进行处理
         
         # 裁剪左眼和右眼区域
         le_img, le_rect = crop_eye(gray, eye_points=landmarks[36:42])
