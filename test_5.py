@@ -5,6 +5,8 @@ from imutils import face_utils
 from keras.models import load_model
 import time
 import winsound
+import os
+from datetime import datetime
 
 # 定义眼睛图像的尺寸
 EYE_IMG_SIZE = (34, 26)
@@ -17,6 +19,31 @@ blink_model.summary()
 face_detector = dlib.get_frontal_face_detector()
 landmark_predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
+class Logger:
+    # 初始化日志文件夹和日志文件
+    def __init__(self):
+        self.log_dir = 'logs'
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+        
+        start_time_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        self.log_file = os.path.join(self.log_dir, f'detection_log_{start_time_str}.txt')
+    
+    # 将不同类型的事件写入日志文件
+    def log(self, event_type, message):
+        color_code = {
+            'BLINK': '\033[32m',  # 绿色
+            'SLEEPY': '\033[31m',  # 红色 
+            'FREQ_LOW': '\033[33m',  # 黄色
+            'TOTAL_STAT': '\033[36m',  # 青色
+        }.get(event_type, '')
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        log_message = f'{color_code}[{timestamp}] [{event_type}] {message}\033[0m\n'
+        
+        with open(self.log_file, 'a') as f:
+            f.write(log_message)
+            
 # 从原始图像中裁剪出眼睛区域
 def crop_eye(img, eye_points):
     # 计算眼睛区域的边界框
@@ -50,7 +77,7 @@ def preprocess_eye(eye_img, is_right_eye=False):
     return eye_img
 
 # 检测眨眼并更新相关状态变量
-def detect_blink(le_img, ri_img):
+def detect_blink(le_img, ri_img, logger):
     global total_blinks, eyes_closed, blink_start_time, blink_history
     # 将眼睛图像转换为模型输入格式,使用模型预测左眼和右眼的睁闭状态
     le_pred = blink_model.predict(le_img.reshape((1, EYE_IMG_SIZE[1], EYE_IMG_SIZE[0], 1)))[0, 0]
@@ -64,6 +91,7 @@ def detect_blink(le_img, ri_img):
             blink_start_time = time.time()  # 记录闭眼开始时间
             total_blinks += 1
             blink_history.append(time.time())  # 将眨眼时刻添加到眨眼历史记录中
+            logger.log('BLINK', 'Blink detected')
     else:
         eyes_closed = False
     return le_pred, le_status, ri_pred, ri_status
@@ -92,20 +120,22 @@ def draw_eye_status(result_frame, le_rect, re_rect, le_status, re_status, le_pre
     cv2.putText(result_frame, f'{re_pred:.2f}', re_prob_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
 
 # 检测长时间闭眼(睡意检测)
-def check_sleepy(le_status, re_status):
+def check_sleepy(le_status, re_status, logger):
     global blink_start_time, last_face_time, sleepy_warning_end_time
     if le_status == '-' and re_status == '-' and time.time() - blink_start_time > 2 and time.time() - last_face_time > 2:
-        winsound.PlaySound("alert.wav", winsound.SND_ASYNC)  # 播放警示音
+        winsound.PlaySound('alert.wav', winsound.SND_ASYNC)  # 播放警示音
         blink_start_time = time.time()  # 更新闭眼开始时间
         sleepy_warning_end_time = time.time() + 2  # 设置睡意警告信息的结束时间
+        logger.log('SLEEPY', 'Sleepy warning triggered')
 
 # 检测低眨眼频率(疲劳检测)  
-def check_blink_freq():
+def check_blink_freq(logger):
     global last_freq_check_time, freq_warning_end_time, last_face_time
     if time.time() - last_freq_check_time > 10:
         if (len(blink_history) == 0 or time.time() - blink_history[-1] > 10) and time.time() - last_face_time > 10:
         # 如果过去10秒内没有眨眼记录或者最近一次眨眼时刻与当前时间差超过10秒,且最后一次检测到人脸的时间与当前时间差超过10秒
             freq_warning_end_time = time.time() + 2  # 设置疲劳提示信息的结束时间
+            logger.log('FREQ_LOW', 'Blink frequency warning triggered')
         last_freq_check_time = time.time()  # 更新上一次检查时间
         # 移除眨眼历史记录中10秒前的数据
         while len(blink_history) > 0 and time.time() - blink_history[0] > 10:
@@ -115,7 +145,7 @@ def check_blink_freq():
 def draw_sleepy_warning(result_frame):
     if time.time() < sleepy_warning_end_time:
     # 如果当前时间在睡意警告信息显示的时间范围内,显示警告信息
-        sleepy_warning_text_1 = "Feeling sleepy?"
+        sleepy_warning_text_1 = 'Feeling sleepy?'
         sleepy_warning_text_2 = 'Wake up!'
         (text1_width, text1_height), _ = cv2.getTextSize(sleepy_warning_text_1, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
         sleepy_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height - 30)
@@ -128,7 +158,7 @@ def draw_sleepy_warning(result_frame):
 def draw_freq_warning(result_frame):
     if time.time() < freq_warning_end_time:  
     # 如果当前时间在疲劳提示信息显示的时间范围内,显示提示信息
-        freq_warning_text_1 = "Blinking Frequency"
+        freq_warning_text_1 = 'Blinking Frequency'
         freq_warning_text_2 = 'Too Low'
         (text1_width, text1_height), _ = cv2.getTextSize(freq_warning_text_1, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
         freq_warning_pos_1 = (result_frame.shape[1] // 2 - text1_width // 2, result_frame.shape[0] // 2 - text1_height + 50)
@@ -141,11 +171,11 @@ def draw_freq_warning(result_frame):
 def draw_total_blinks(result_frame):
     total_blinks_pos = (2, 20)
     if eyes_closed:
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1)
+        cv2.putText(result_frame, f'Total Blinks: {total_blinks}', total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+        cv2.putText(result_frame, f'Total Blinks: {total_blinks}', total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 1)
     else:
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-        cv2.putText(result_frame, f"Total Blinks: {total_blinks}", total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
+        cv2.putText(result_frame, f'Total Blinks: {total_blinks}', total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+        cv2.putText(result_frame, f'Total Blinks: {total_blinks}', total_blinks_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
 
 # 计算并绘制实时帧率
 def calc_and_draw_fps(result_frame):
@@ -160,8 +190,8 @@ def calc_and_draw_fps(result_frame):
         start_time = time.time()  # 重置起始时间
     
     # 在图像上绘制实时帧率
-    cv2.putText(result_frame, f"FPS: {fps:.2f}", (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
-    cv2.putText(result_frame, f"FPS: {fps:.2f}", (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
+    cv2.putText(result_frame, f'FPS: {fps:.2f}', (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 2)
+    cv2.putText(result_frame, f'FPS: {fps:.2f}', (result_frame.shape[1]-125, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
 
 # 创建一个名为'result'的可调整大小的窗口,用于显示处理后的视频帧
 cv2.namedWindow('result', cv2.WINDOW_NORMAL)
@@ -174,6 +204,7 @@ cap = cv2.VideoCapture(0)
 total_blinks = 0
 eyes_closed = False  
 start_time = time.time()
+total_start_time = time.time()
 frame_count = 0
 fps = 0
 last_freq_check_time = time.time()  
@@ -181,7 +212,12 @@ freq_warning_end_time = 0
 sleepy_warning_end_time = 0
 blink_history = []
 face_detected = False
-last_face_time = 0
+last_face_time = time.time()
+
+logger = Logger()  # 创建Logger对象
+
+valid_duration = 0  # 记录检测到人脸的有效时长(秒)
+total_frame_count = 0  # 记录总帧数
 
 # 视频处理循环
 while cap.isOpened():
@@ -189,6 +225,8 @@ while cap.isOpened():
     if not ret:
         break  # 如果读取失败,跳出循环
 
+    total_frame_count += 1  # 总帧数加1
+        
     # 预处理
     frame = cv2.resize(frame, dsize=(0, 0), fx=0.5, fy=0.5) # 缩小图像尺寸,加快处理速度
     frame = cv2.flip(frame, 1)  # 水平翻转图像
@@ -201,9 +239,13 @@ while cap.isOpened():
         if not face_detected:
             face_detected = True
             last_face_time = time.time()  # 记录最后一次检测到人脸的时间
+            face_start_time = time.time()  # 记录人脸出现的时间
     else:
-        face_detected = False
-        
+        if face_detected:
+            face_detected = False
+            valid_duration += (time.time() - face_start_time)  # 累加有效时长
+
+
     # 对检测到的每一张人脸进行处理
     for face in faces:
         # 检测面部特征点
@@ -219,15 +261,15 @@ while cap.isOpened():
         ri_img = preprocess_eye(ri_img, is_right_eye=True)
 
         # 检测眨眼并更新相关状态
-        le_pred, le_status, ri_pred, ri_status = detect_blink(le_img, ri_img)
+        le_pred, le_status, ri_pred, ri_status = detect_blink(le_img, ri_img, logger)
 
         # 在图像上绘制眼睛状态和睁闭概率
         draw_eye_status(result_frame, le_rect, ri_rect, le_status, ri_status, le_pred, ri_pred)
         
         # 检测长时间闭眼和低眨眼频率
-        check_sleepy(le_status, ri_status)
-        check_blink_freq()
-
+        check_sleepy(le_status, ri_status, logger)
+        check_blink_freq(logger)
+        
     # 在图像上绘制睡意和疲劳警告信息
     draw_sleepy_warning(result_frame)
     draw_freq_warning(result_frame)
@@ -245,6 +287,21 @@ while cap.isOpened():
     # 如果按下'q'键或者'Esc'键,或者关闭显示窗口,则退出程序
     if key == ord('q') or key == 27 or cv2.getWindowProperty('result', cv2.WND_PROP_VISIBLE) < 1:
         break
+
+# 在程序退出前,记录最后一次人脸消失的时间,并累加有效时间
+if face_detected:
+    valid_duration += (time.time() - face_start_time)  # 累加有效时长
+    
+# 计算并记录总结信息
+avg_blink_freq = (total_blinks / valid_duration) * 60 if valid_duration > 0 else 0
+avg_fps = total_frame_count / valid_duration
+
+logger.log('==================== Summary ====================', '')  # 标题
+logger.log('TOTAL_STAT', f'Total duration: {(time.time() - total_start_time):.3f} s')
+logger.log('TOTAL_STAT', f'Total valid duration: {valid_duration:.3f} s')
+logger.log('TOTAL_STAT', f'Total blinks: {total_blinks}')
+logger.log('TOTAL_STAT', f'Average blink frequency: {avg_blink_freq:.3f} blinks/min')
+logger.log('TOTAL_STAT', f'Average FPS: {avg_fps:.3f}')
 
 # 释放资源
 cap.release()
