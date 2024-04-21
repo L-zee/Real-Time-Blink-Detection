@@ -20,29 +20,39 @@ face_detector = dlib.get_frontal_face_detector()
 landmark_predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 class Logger:
-    # 初始化日志文件夹和日志文件
     def __init__(self):
-        self.log_dir = 'logs'
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
+        self.log_dir = "logs"
+        os.makedirs(self.log_dir, exist_ok=True)
         
-        start_time_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        self.log_file = os.path.join(self.log_dir, f'detection_log_{start_time_str}.txt')
+        start_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.log_file = os.path.join(self.log_dir, f"detection_log_{start_time_str}.html")
+        
+        with open(self.log_file, 'w') as f:
+            f.write("""
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; }
+                    .blink { color: green; }
+                    .sleepy { color: red; }
+                    .freq-low { color: orange; }
+                    .total-stat { color: blue; }
+                </style>
+            </head>
+            <body>
+            """)
     
-    # 将不同类型的事件写入日志文件
     def log(self, event_type, message):
-        color_code = {
-            'BLINK': '\033[32m',  # 绿色
-            'SLEEPY': '\033[31m',  # 红色 
-            'FREQ_LOW': '\033[33m',  # 黄色
-            'TOTAL_STAT': '\033[36m',  # 青色
-        }.get(event_type, '')
-        
+        class_name = event_type.lower().replace("_", "-")
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        log_message = f'{color_code}[{timestamp}] [{event_type}] {message}\033[0m\n'
+        log_message = f"<p><span class='{class_name}'>[{timestamp}] [{event_type}]</span> {message}</p>\n"
         
         with open(self.log_file, 'a') as f:
             f.write(log_message)
+    
+    def close(self):
+        with open(self.log_file, 'a') as f:
+            f.write("</body></html>\n")
             
 # 从原始图像中裁剪出眼睛区域
 def crop_eye(img, eye_points):
