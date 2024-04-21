@@ -210,7 +210,7 @@ cv2.resizeWindow('result', 1000, 750)
 # 打开默认的摄像头
 cap = cv2.VideoCapture(0)
 
-# 初始化疲劳检测、帧率相关的状态变量
+# 初始化疲劳检测、帧率、日志相关的状态变量
 total_blinks = 0
 eyes_closed = False  
 start_time = time.time()
@@ -218,16 +218,16 @@ total_start_time = time.time()
 frame_count = 0
 fps = 0
 last_freq_check_time = time.time()  
-freq_warning_end_time = 0
 sleepy_warning_end_time = 0
+freq_warning_end_time = 0
 blink_history = []
 face_detected = False
 last_face_time = time.time()
-
-logger = Logger()  # 创建Logger对象
-
 valid_duration = 0  # 记录检测到人脸的有效时长(秒)
 total_frame_count = 0  # 记录总帧数
+logger = Logger()  # 创建Logger对象
+
+
 
 # 视频处理循环
 while cap.isOpened():
@@ -306,7 +306,7 @@ if face_detected:
 avg_blink_freq = (total_blinks / valid_duration) * 60 if valid_duration > 0 else 0
 avg_fps = total_frame_count / valid_duration
 
-logger.log('==================== Summary ====================', '')  # 标题
+logger.log('Turn Off', '==================== Summary ====================')  # 标题
 logger.log('TOTAL_STAT', f'Total duration: {(time.time() - total_start_time):.3f} s')
 logger.log('TOTAL_STAT', f'Total valid duration: {valid_duration:.3f} s')
 logger.log('TOTAL_STAT', f'Total blinks: {total_blinks}')
